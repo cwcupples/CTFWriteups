@@ -1,10 +1,10 @@
 # Filtered Shellcode - Pico CTF 2021
 
-This challenge takes a look at writing shellcode but in a very specific manner. We are given a single binary called "fun" and given the hint to look at the calling convention and see how to set up the registers.
+This challenge takes a look at writing shellcode but in a very specific manner. We are given a single binary called `fun` and given the hint to look at the calling convention and see how to set up the registers.
 
 ## Reversing the Binary
 
-So to begin, we download the binary and throw it in Ghidra and find out a little bit about the program. Below is the decompiled main function and we can see that it takes user input and calls a function called execute. Below main is the decompiled version of execute, but it's a little difficult to determine exactly what execute is doing. It roughly looks like it takes the input from the command line and then stores is in the stack, but with some filtering that's a little hard to understand.
+So to begin, we download the binary and throw it in Ghidra to find out a little bit about the program. I've added a few variable names and some comments to the output of Ghidra to clean it up a bit. Below is the decompiled main function and we can see that it takes user input and calls a function called `execute()`.
 
 ```c++
 undefined4 main(void)
@@ -22,21 +22,24 @@ undefined4 main(void)
   puts("Give me code to run:");
   i_user_input = fgetc(stdin);
   c_user_input = (char)i_user_input;
-  while ((c_user_input != '\n' && (i < 1000))) {
+  while ((c_user_input != '\n' && (i < 1000))) {	// continue to get user input until newline reached
     buf[i] = c_user_input;
     i_user_input = fgetc(stdin);
-    c_user_input = (char)i_user_input;
+    c_user_input = (char)i_user_input;			// take in a byte from the user, convert it to char and store in the buffer
     i = i + 1;
   }
-                    /* ensure input is even length */
-  if ((i & 1) != 0) {
+  if ((i & 1) != 0) {	  // ensure input is even length
     buf[i] = -0x70;
     i = i + 1;
   }
   execute(buf,i);
   return 0;
 }
+```
 
+Now let's inspect `execute()` to see what exactly it does. It roughly looks like it takes the input from the command line and then stores is in the stack, but with some filtering that's a little hard to understand.
+
+```c++
 void execute(int buffer,int length)
 {
   int iVar1;
@@ -47,30 +50,28 @@ void execute(int buffer,int length)
   undefined auStack44 [8];
   undefined *local_24;
   undefined *local_20;
-  uint local_1c;
   uint total_length;
-  int local_14;
-  uint local_10;
+  int buf_index;
+  uint stack_index;
   
   uStack48 = 0x8048502;
   if ((buffer != 0) && (length != 0)) {
-    total_length = length * 2;
-    local_1c = total_length;
+    total_length = length * 2;		// double the length of the input
     uVar3 = (total_length + 0x10) / 0x10;
     iVar1 = uVar3 * -0x10;
     local_20 = auStack44 + iVar1;
-    local_14 = 0;
-    local_10 = 0;
-    while (iVar2 = local_14, local_10 < total_length) {
-      uVar4 = (uint)((int)local_10 >> 0x1f) >> 0x1e;
-      if ((int)((local_10 + uVar4 & 3) - uVar4) < 2) {
-        local_14 = local_14 + 1;
-        auStack44[local_10 + iVar1] = *(undefined *)(buffer + iVar2);
+    buf_index = 0;
+    stack_index = 0;
+    while (iVar2 = buf_index, stack_index < total_length) {
+      uVar4 = (uint)((int)stack_index >> 0x1f) >> 0x1e;
+      if ((int)((stack_index + uVar4 & 3) - uVar4) < 2) {
+        buf_index = buf_index + 1;
+        auStack44[stack_index + iVar1] = *(undefined *)(buffer + iVar2);		// place byte in buffer in the stack
       }
       else {
-        auStack44[local_10 + iVar1] = 0x90;
+        auStack44[stack_index + iVar1] = 0x90;		// place a 0x90 in the stack
       }
-      local_10 = local_10 + 1;
+      stack_index = stack_index + 1;
     }
     auStack44[total_length + iVar1] = 0xc3;
     local_24 = auStack44 + iVar1;
@@ -85,7 +86,7 @@ void execute(int buffer,int length)
 
 ## A little bit of debugging
 
-To get a better idea of what exactly execute() is doing, let's take a look at this binary in GDB. 
+To get a better idea of what exactly `execute()` is doing, let's take a look at this binary in GDB. 
 
 Setting a breakpoint right before we call the `(*(code *)(auStack44 + iVar1))();` line in `execute()` we can inspect the instructions that have been placed on the stack and are about to be executed by `execute()`. We see that the instructions are grouped into 4 bytes, with the first two being the user input, and the latter two being `0x90` (nops). So it appears that this binary will take in some shellcode, but only execute two byte instructions.  This means we need to find some shellcode that only uses 2 byte instructions which is probably going to be really hard to find. Instead let's just use some normal shellcode and modify it for our purposes here.
 
