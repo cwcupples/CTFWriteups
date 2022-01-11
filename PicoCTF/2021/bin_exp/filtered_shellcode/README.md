@@ -2,8 +2,11 @@
 
 This challenge takes a look at writing shellcode but in a very specific manner. We are given a single binary called "fun" and given the hint to look at the calling convention and see how to set up the registers.
 
-So to begin, we download the binary and throw it in Ghidra and find out a little bit about the program. Below is the decompiled main function and we can see that it takes user input and calls a function called execute. Below main is the decompiled version of execute, but it's a little difficult to determine exactly what execute is doing. It roughly looks like it takes the input from the command line and then stores is in the stack, but with some filtering that's a little hard to figure out.
+## Reversing the Binary
 
+So to begin, we download the binary and throw it in Ghidra and find out a little bit about the program. Below is the decompiled main function and we can see that it takes user input and calls a function called execute. Below main is the decompiled version of execute, but it's a little difficult to determine exactly what execute is doing. It roughly looks like it takes the input from the command line and then stores is in the stack, but with some filtering that's a little hard to understand.
+
+```c++
 undefined4 main(void)
 {
   int i_user_input;
@@ -78,15 +81,20 @@ void execute(int buffer,int length)
                     /* WARNING: Subroutine does not return */
   exit(1);
 }
+```
 
-To get a better idea of what exactly execute() is doing, let's take a look at this binary in GDB. Unfortunately, I had to open up my Kali VM to actually run the binary in GDB because it wouldn't work correctly on my mac. So off to the VM!
+## A little bit of debugging
 
-Setting a breakpoint right before we call the (*(code *)(auStack44 + iVar1))(); line in execute() we can inspect the instructions that are about to be executed by this function. We see that the instructions are grouped into 4 bytes, with the first two being the user input, and the latter two being 0x90 (nops). So it appears that this binary will take in some shellcode, but only execute two byte instructions.  This means we need to find some shellcode that only uses 2 byte instructions which is probably going to be really hard to find. Instead let's just use some normal shellcode and modify it for our purposes here.
+To get a better idea of what exactly execute() is doing, let's take a look at this binary in GDB. 
 
-Going to shell-storm.org and looking for some useful shellcode, I found one with the title: Linux x86 execve("/bin/sh") - 28 bytes (http://shell-storm.org/shellcode/files/shellcode-811.php). This seems like it'll work
+Setting a breakpoint right before we call the `(*(code *)(auStack44 + iVar1))();` line in `execute()` we can inspect the instructions that have been placed on the stack and are about to be executed by `execute()`. We see that the instructions are grouped into 4 bytes, with the first two being the user input, and the latter two being `0x90` (nops). So it appears that this binary will take in some shellcode, but only execute two byte instructions.  This means we need to find some shellcode that only uses 2 byte instructions which is probably going to be really hard to find. Instead let's just use some normal shellcode and modify it for our purposes here.
+
+Going to shell-storm.org and looking for some useful shellcode, I found one with the title: [Linux x86 execve("/bin/sh") - 28 bytes](http://shell-storm.org/shellcode/files/shellcode-811.php). This seems like it'll work
 
 
 On the server, we find the actual code which looks like:
+
+```c++
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -136,3 +144,4 @@ int main(int argc, char *argv[]) {
 	execute(buf, length);
 	return 0;
 }
+```
